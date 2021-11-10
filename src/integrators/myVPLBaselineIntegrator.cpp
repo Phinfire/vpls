@@ -25,16 +25,17 @@ public:
         Point center;
         Normal n;
         Spectrum flux;
+        float r;
     };
 
     MyVPLBaselineIntegrator(const Properties &props) : SamplingIntegrator(props)
     {
         sceneProperty_directIlluminationSamples = props.getInteger("directIlluminationSamples", 0);
         sceneProperty_indirectIlluminationSamples = props.getInteger("indirectIlluminationSamples", 0);
-        sceneProperty_numVPLSamples = props.getInteger("indirectIlluminationSamples", 0);
         sceneProperty_VPLCount = props.getInteger("desiredVPLCount", 0);
         sceneProperty_maxVPLPathLength = props.getInteger("maxPathLength", 1);
         sceneProperty_clampDistanceMin = props.getFloat("clampDistanceTo", 1.0f);
+        sceneProperty_numberOfClusters = props.getInteger("numberOfClusters", 10);
     }
 
     MyVPLBaselineIntegrator(Stream *stream, InstanceManager *manager) : SamplingIntegrator(stream, manager)
@@ -100,7 +101,92 @@ public:
         {
             vplVec[i].L_i /= (float)generatedPaths;
         }
-        
+        // Clustering
+        clusterVec.clear();
+        int numClusters = 10;
+        float w_dist = 1, w_n = 1, w_flux = 1;
+        std::function<float(MyVPL, MyVPL)> distanceMetric = [w_dist, w_n, w_flux](const MyVPL &vpl1, const MyVPL &vpl2)
+        {
+            Vector rgb1, rgb2;
+            vpl1.L_i.toLinearRGB(rgb1[0], rgb1[1], rgb1[2]);
+            vpl2.L_i.toLinearRGB(rgb2[0], rgb2[1], rgb2[2]);
+            rgb1 /= rgb1.length();
+            rgb2 /= rgb2.length();
+            return w_dist * distance(vpl1.its.p, vpl2.its.p) + w_n * (1 - dot(vpl1.its.geoFrame.n, vpl2.its.geoFrame.n)) + w_flux * dot(rgb2 - rgb1, rgb2 - rgb1);
+        };
+        std::function<float(VPLCluster, MyVPL)> clusterAndVPLdistanceMetric = [w_dist, w_n, w_flux](const VPLCluster &cluster, const MyVPL &vpl)
+        {
+            Vector rgb1, rgb2;
+            cluster.flux.toLinearRGB(rgb1[0], rgb1[1], rgb1[2]);
+            vpl.L_i.toLinearRGB(rgb2[0], rgb2[1], rgb2[2]);
+            rgb1 /= rgb1.length();
+            rgb2 /= rgb2.length();
+            return w_dist * distance(cluster.center, vpl.its.p) + w_n * (1 - dot(cluster.n, vpl.its.geoFrame.n)) + w_flux * dot(rgb2 - rgb1, rgb2 - rgb1);
+        };
+        std::set<int> clusterInits;
+        for (int i = 0; i < sceneProperty_numberOfClusters; i++)
+        {
+            while (clusterInits.size() <= i)
+            {
+                int idx = (int)(sampler->next1D() * vplVec.size());
+                clusterInits.insert(std::min(idx, (int)vplVec.size() - 1));
+            }
+        }
+        std::transform(clusterInits.begin(),clusterInits.end(),std::back_inserter(clusterVec), [this](const int arg){ VPLCluster c = {vplVec[arg].its.p,vplVec[arg].its.geoFrame.n,vplVec[arg].L_i,0.0f}; return c; });
+        std::vector<int> clusterAssignmentsPrev;
+        std::vector<int> clusterAssignments(vplVec.size(),-1);
+        int refinementIteration = 0;
+        do {
+            printf("refining (%i)...\n", refinementIteration);
+            clusterAssignmentsPrev = clusterAssignments;
+            for (int i = 0; i < vplVec.size(); i++)
+            {
+                std::vector<VPLCluster>::iterator minCluster = min_element(clusterVec.begin(), clusterVec.end(), [this, i, clusterAndVPLdistanceMetric](VPLCluster arg1, VPLCluster arg2)
+                {
+                    return clusterAndVPLdistanceMetric(arg1, vplVec[i]) < clusterAndVPLdistanceMetric(arg2, vplVec[i]);
+                });
+                clusterAssignments[i] = (int) std::distance(clusterVec.begin(), minCluster);
+            }
+            for (int i = 0; i < clusterVec.size(); i++)
+            {
+                Point center_acc = Point(0.0f);
+                Vector n_acc = Vector(0.0f);
+                Spectrum flux_acc = Spectrum(0.0f);
+                int counter = 0;
+                for (int j = 0; j < vplVec.size(); j++)
+                {
+                    if (clusterAssignments[j] == i)
+                    {
+                        n_acc += vplVec[j].its.geoFrame.n;
+                        counter++;
+                    }
+                }
+                Vector n = n_acc / (float)counter;
+                for (int j = 0; j < vplVec.size(); j++)
+                {
+                    if (clusterAssignments[j] == i)
+                    {
+                        center_acc += vplVec[j].its.p;
+                        n_acc += vplVec[j].its.geoFrame.n;
+                        BSDFSamplingRecord bsdfRec(vplVec[j].its, vplVec[j].its.toLocal(n / n.length()), vplVec[j].its.toLocal(vplVec[j].w_o));
+                        Spectrum brdfVal = vplVec[j].f->eval(bsdfRec);
+                        flux_acc += vplVec[j].L_i * brdfVal * std::max(0.0f, dot(n / n.length(), vplVec[j].its.geoFrame.n));
+                    }
+                }
+                float r = 0;
+                Point center = center_acc / (float)counter;
+                for (int j = 0; j < vplVec.size(); j++)
+                {
+                    if (clusterAssignments[j] == i)
+                    {
+                        r = std::max(r,distance(vplVec[j].its.p, center));
+                    }
+                }
+                clusterVec[i] = VPLCluster{center, Normal(n / n.length()), flux_acc,r};
+            }
+            refinementIteration++;
+        } while ((refinementIteration < 5 && !equal(clusterAssignmentsPrev.begin(), clusterAssignmentsPrev.end(), clusterAssignments.begin())));
+        printf("VPL generated: %zi / %i in %i paths || %i clusters\n", vplVec.size(), sceneProperty_VPLCount, generatedPaths, (int) clusterVec.size());
         return true;
     }
 
@@ -129,6 +215,23 @@ public:
         return Spectrum(0.0f);
     }
 
+    Spectrum evalClusterContribution(const RayDifferential &r, VPLCluster c, RadianceQueryRecord &rRec) const
+    {
+        Vector toCenter = Vector(c.center - rRec.its.p);
+        float cos_x = std::max(0.0f, dot(toCenter / (float)toCenter.length(), rRec.its.geoFrame.n));
+        float cos_xc = std::max(0.0f, dot(-toCenter / (float)toCenter.length(), c.n));
+        Intersection its;
+        rRec.scene->rayIntersect(RayDifferential(rRec.its.p + Epsilon * toCenter / toCenter.length(), toCenter / toCenter.length(), 0), its);
+        if (cos_x > Epsilon && cos_xc > Epsilon && its.t + ShadowEpsilon >= toCenter.length())
+        {
+            float diskArea = M_PI * c.r * c.r;
+            BSDFSamplingRecord bRec_x1(rRec.its, rRec.its.toLocal(-r.d), rRec.its.toLocal(toCenter / toCenter.length()));
+            Spectrum L_i = c.flux * diskArea * cos_x * cos_xc / (diskArea + M_PI * pow(toCenter.length(), 2.0f));
+            return L_i * rRec.its.getBSDF(r)->eval(bRec_x1);
+        }
+        return Spectrum(0.0f);
+    }
+
     Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const
     {
         Spectrum total(0.0f);
@@ -144,19 +247,30 @@ public:
                 total += direct / (float)sceneProperty_directIlluminationSamples;
             }
             Spectrum indirect = Spectrum(0.0f);
-            if (sceneProperty_indirectIlluminationSamples < vplVec.size())
+            if (true)
             {
-                for (int x_ = 0; x_ < sceneProperty_indirectIlluminationSamples; x_++)
+                for (VPLCluster c : clusterVec)
                 {
-
-                    uint32_t i = (uint32_t)(rRec.nextSample1D() * vplVec.size());
-                    i = i < vplVec.size() ? i : vplVec.size() - 1;
-                    indirect += evalVPLContribution(r, vplVec[i], rRec);
+                    total += evalClusterContribution(r, c, rRec);
                 }
-                total += indirect * (float)vplVec.size() / (float)sceneProperty_indirectIlluminationSamples;
             } else {
-                for (MyVPL vpl : vplVec) {
-                    indirect += evalVPLContribution(r, vpl, rRec);
+                if (sceneProperty_indirectIlluminationSamples < vplVec.size())
+                {
+                    for (int x_ = 0; x_ < sceneProperty_indirectIlluminationSamples; x_++)
+                    {
+
+                        uint32_t i = (uint32_t)(rRec.nextSample1D() * vplVec.size());
+                        i = i < vplVec.size() ? (uint32_t)i : (uint32_t)vplVec.size() - 1;
+                        indirect += evalVPLContribution(r, vplVec[i], rRec);
+                    }
+                    total += indirect * (float)vplVec.size() / (float)sceneProperty_indirectIlluminationSamples;
+                }
+                else
+                {
+                    for (MyVPL vpl : vplVec)
+                    {
+                        indirect += evalVPLContribution(r, vpl, rRec);
+                    }
                 }
             }
         }
@@ -165,7 +279,7 @@ public:
 
 private:
     ref<Random> m_random;
-    int sceneProperty_VPLCount, sceneProperty_numVPLSamples, sceneProperty_directIlluminationSamples, sceneProperty_indirectIlluminationSamples, sceneProperty_maxVPLPathLength;
+    int sceneProperty_VPLCount, sceneProperty_directIlluminationSamples, sceneProperty_indirectIlluminationSamples, sceneProperty_maxVPLPathLength, sceneProperty_numberOfClusters;
     float sceneProperty_clampDistanceMin;
     std::vector<MyVPL> vplVec;
     std::vector<VPLCluster> clusterVec;
