@@ -8,11 +8,14 @@
 <scene version="0.6.0">
 	<integrator type="myVPLBaselineIntegrator">
         <integer name="directIlluminationSamples" value="0"/>
-        <integer name="indirectIlluminationSamples" value="50"/>
-        <integer name="desiredVPLCount" value="100000"/>
+        <integer name="indirectIlluminationSamples" value="200"/>
+        <integer name="desiredVPLCount" value="20000"/>
         <integer name="maxPathLength" value="10"/>
         <float name="clampDistanceTo" value = "1"/>
-        <integer name="numberOfClusters" value="250"/>
+        <integer name="numberOfClusters" value="5000"/>
+        <integer name="refinementIterations" value="3"/>
+        <integer name="debug_showClusters" value="0"/>
+        <integer name="useClusters" value="1"/>
     </integrator>
 
 	<texture type="bitmap" id="Map__1_image-image">
