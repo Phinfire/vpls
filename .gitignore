@@ -48,3 +48,8 @@ mitsuba.*.log
 .settings
 .cproject
 .project
+
+
+# My test scenes
+/testScenes
+*.ps1

@@ -8,14 +8,24 @@
 <scene version="0.6.0">
 	<integrator type="myVPLBaselineIntegrator">
         <integer name="directIlluminationSamples" value="0"/>
-        <integer name="indirectIlluminationSamples" value="200"/>
-        <integer name="desiredVPLCount" value="20000"/>
+        <integer name="indirectIlluminationSamples" value="10"/>
+        <integer name="desiredVPLCount" value="10000"/>
         <integer name="maxPathLength" value="10"/>
         <float name="clampDistanceTo" value = "1"/>
-        <integer name="numberOfClusters" value="5000"/>
-        <integer name="refinementIterations" value="3"/>
+        <integer name="numberOfClusters" value="2000"/>
+        <integer name="refinementIterations" value="1"/>
         <integer name="debug_showClusters" value="0"/>
-        <integer name="useClusters" value="1"/>
+        <integer name="ris_m" value="5"/>
+        <float name="distanceMetricWeight_flux" value="1"/>
+        <float name="distanceMetricWeight_distance" value="1"/>
+        <float name="distanceMetricWeight_normals" value="1"/>
+        <integer name="ignoreShadowRays" value="0"/>
+        <integer name="clusterGenerationProjection" value="0"/>
+        <integer name="renderMode" value="3"/>
+        <integer name="samplingTechnique" value="0"/>
+        <integer name="bsdfMode" value="0"/>
+        <integer name="photonN" value="5"/>
+        <float name="photonRadius" value="0.5"/>
     </integrator>
 
 	<texture type="bitmap" id="Map__1_image-image">
@@ -148,8 +158,8 @@
 		<sampler type="ldsampler"/>
 
 		<film type="hdrfilm">
-			<integer name="height" value="400"/>
-			<integer name="width" value="600"/>
+			<integer name="height" value="800"/>
+			<integer name="width" value="1200"/>
 
 			<rfilter type="gaussian"/>
 		</film>

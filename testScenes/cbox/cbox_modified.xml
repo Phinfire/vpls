@@ -2,10 +2,21 @@
 
 <scene version="0.6.0">
 	<integrator type="myVPLBaselineIntegrator">
-        <integer name="directIlluminationSamples" value="32"/>
-        <integer name="desiredVPLCount" value="1000"/>
+        <integer name="directIlluminationSamples" value="0"/>
+        <integer name="indirectIlluminationSamples" value="20"/>
+        <integer name="desiredVPLCount" value="5000"/>
         <integer name="maxPathLength" value="10"/>
-        <float name="clampDistanceTo" value = "50"/>
+        <float name="clampDistanceTo" value = "1"/>
+        <integer name="numberOfClusters" value="5000"/>
+        <integer name="refinementIterations" value="3"/>
+        <integer name="debug_showClusters" value="0"/>
+        <integer name="ris_m" value="5"/>
+        <integer name="renderMode" value="4"/>
+        <float name="distanceMetricWeight_flux" value="1"/>
+        <float name="distanceMetricWeight_distance" value="1"/>
+        <float name="distanceMetricWeight_normals" value="1"/>
+        <integer name="ignoreShadowRays" value="0"/>
+        <integer name="clusterGenerationProjection" value="1"/>
     </integrator>
 
 	<sensor type="perspective">

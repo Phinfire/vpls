@@ -105,6 +105,8 @@ hasCollada=True
 hasPython = []
 
 env.Append(CPPPATH=env['BASEINCLUDE'])
+env.Append(CPPPATH='D:/Daten/Code/libigl/include')
+env.Append(CPPPATH='D:/Daten/Code/eigen')
 env.Append(CPPFLAGS=[])
 env.Append(LIBPATH=[])
 env.Append(LIBS=env['BASELIB'])

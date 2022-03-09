@@ -1,0 +1,8 @@
+#ifndef MYVPLS_H
+#define MYVPLS_H
+
+MTS_NAMESPACE_BEGIN
+
+MTS_NAMESPACE_END
+
+#endif
